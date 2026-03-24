@@ -164,22 +164,39 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 20px 18px;
+      padding: 16px 18px;
       text-align: center;
-      gap: 10px;
+      gap: 7px;
     }
 
     .pt-av {
       flex-shrink: 0;
-      width: 80px; height: 80px;
+      width: 76px; height: 76px;
     }
+
+    /* icon+QR モード時はアイコンを小さく */
+    .pt-av.small { width: 58px; height: 58px; }
 
     .pt-text {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 3px;
+      gap: 2px;
       width: 100%;
+    }
+
+    /* Portrait QR — icon+QR時は小さく */
+    .pt-qr {
+      flex-shrink: 0;
+      width: 52px; height: 52px;
+      margin-top: 2px;
+    }
+    .pt-qr img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 3px; }
+
+    /* Portrait QR only — もう少し大きく */
+    .pt-qr.qr-only {
+      width: 80px; height: 80px;
+      margin-top: 6px;
     }
 
     /* ── QR slot in landscape (icon+QR mode) ── */
@@ -200,17 +217,8 @@
     }
     .ls-qr-only img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; }
 
-    /* Portrait icon+QR */
-    .pt-qr {
-      flex-shrink: 0;
-      width: 68px; height: 68px;
-      margin-top: 6px;
-    }
-    .pt-qr img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; }
-
-    /* icon+QR: shrink icon slightly */
+    /* icon+QR landscape: shrink icon slightly */
     .ls-av.small { width: 68px; height: 68px; }
-    .pt-av.small { width: 64px; height: 64px; }
     .av-img-wrap {
       width: 100%; height: 100%;
       position: relative;
@@ -523,7 +531,25 @@
   <div class="api-area">
     <span class="api-label">Gemini API Key</span>
     <div class="api-status" id="apiStatus"></div>
-    <input class="api-input" type="password" id="apiKey" placeholder="AIzaSy..." autocomplete="off" oninput="onApiKeyChange()">
+    <!--
+    ========================================================
+    【格納先の方へ】APIキーの設定方法
+
+    ① 毎回UIから入力する場合（デフォルト・推奨）
+       このままで使えます。画面上部の入力欄にAPIキーを入力してください。
+
+    ② デフォルトで自分のAPIキーを埋め込む場合
+       下の input タグの value="" の中にキーを入力してください。
+       例: value="AIzaSyXXXXXXXXXXXXXXXXXXXXXXXX"
+
+       ⚠ 注意: GitHubなどパブリックな場所にはキーを埋め込んだ
+                ファイルをアップしないでください（キー漏洩の原因になります）。
+                ローカルまたはプライベートリポジトリでご使用ください。
+
+    APIキーの取得: https://aistudio.google.com/apikey
+    ========================================================
+    -->
+    <input class="api-input" type="password" id="apiKey" value="" placeholder="AIzaSy..." autocomplete="off" oninput="onApiKeyChange()">
   </div>
 </header>
 
@@ -911,6 +937,7 @@ function render() {
     if (showQr) {
       ptQrImg.src = d.qr;
       ptQr.style.display = '';
+      ptQr.className = `pt-qr${lay === 'qr' ? ' qr-only' : ''}`;
     } else {
       ptQr.style.display = 'none';
     }
@@ -1053,7 +1080,7 @@ function generateQR() {
       width: 256, height: 256,
       colorDark: '#000000',
       colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M
+      correctLevel: QRCode.CorrectLevel.L
     });
 
     setTimeout(() => {
@@ -1220,8 +1247,12 @@ const LSIZE_H = 1750;   // 127mm  × 350dpi
 async function captureCard(side) {
   const cap = side === 'front' ? 'Front' : 'Back';
   const el  = document.getElementById(`card${cap}`);
-  const scaleX = CARD_W / el.offsetWidth;
-  const scaleY = CARD_H / el.offsetHeight;
+  const isPortrait = S.ori === 'portrait';
+  // 縦向き時はW/Hを入れ替えて350dpi換算
+  const targetW = isPortrait ? CARD_H : CARD_W;  // 縦: 744px / 横: 1181px
+  const targetH = isPortrait ? CARD_W : CARD_H;  // 縦: 1181px / 横: 744px
+  const scaleX = targetW / el.offsetWidth;
+  const scaleY = targetH / el.offsetHeight;
   const bg = THEMES[S.theme].bg;
   return html2canvas(el, {
     scale: Math.max(scaleX, scaleY) * (window.devicePixelRatio || 1),
@@ -1234,55 +1265,99 @@ async function captureCard(side) {
 
 // ── 共通：L版キャンバスに2枚配置してダウンロード ──
 function buildLCanvas(c1, label1, c2, label2) {
+  const isPortrait = S.ori === 'portrait';
   const out = document.createElement('canvas');
-  out.width = LSIZE_W;
-  out.height = LSIZE_H;
+  out.width  = LSIZE_W;   // 1228px (89mm)
+  out.height = LSIZE_H;   // 1750px (127mm)
   const ctx = out.getContext('2d');
 
-  // 白背景
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, LSIZE_W, LSIZE_H);
 
-  const mx  = (LSIZE_W - CARD_W) / 2;          // 左右中央マージン
-  const gap = Math.floor((LSIZE_H - CARD_H * 2) / 3);  // 上・中間・下の余白
-  const y1  = gap;
-  const y2  = gap * 2 + CARD_H;
+  if (isPortrait) {
+    // ── 縦向きカードを90°回転して2枚縦並び ──
+    // 縦カード実寸: 744×1181px (54×85.6mm)
+    // 90°回転後: 1181×744px として配置 → L版縦(1228×1750)に2枚収まる
+    const rotW = CARD_W;  // 1181 (回転後の横幅)
+    const rotH = CARD_H;  // 744  (回転後の縦幅)
+    const mx   = Math.floor((LSIZE_W - rotW) / 2);  // ≈ 23px 左右余白
+    const gap  = Math.floor((LSIZE_H - rotH * 2) / 3);
+    const y1   = gap;
+    const y2   = gap * 2 + rotH;
 
-  // カード描画
-  ctx.drawImage(c1, 0, 0, c1.width, c1.height, mx, y1, CARD_W, CARD_H);
-  ctx.drawImage(c2, 0, 0, c2.width, c2.height, mx, y2, CARD_W, CARD_H);
+    [[c1, y1, label1], [c2, y2, label2]].forEach(([c, y, label]) => {
+      ctx.save();
+      // 回転中心をカードの中心に移動
+      ctx.translate(mx + rotW / 2, y + rotH / 2);
+      ctx.rotate(Math.PI / 2);  // 90°CW回転
+      // 元画像は縦長(CARD_H×CARD_W)なので回転前のサイズで描画
+      ctx.drawImage(c, 0, 0, c.width, c.height, -rotH / 2, -rotW / 2, rotH, rotW);
+      ctx.restore();
 
-  // 破線の切り取りガイド
-  ctx.save();
-  ctx.strokeStyle = '#cccccc';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([10, 6]);
-  [[y1, CARD_H], [y2, CARD_H]].forEach(([y, h]) => {
-    ctx.strokeRect(mx - 16, y - 16, CARD_W + 32, h + 32);
-  });
-  ctx.restore();
+      // ラベル
+      ctx.fillStyle = '#bbbbbb';
+      ctx.font = `bold 18px 'Noto Sans JP', sans-serif`;
+      ctx.fillText(label, mx, y - 20);
+    });
 
-  // 十字トンボ（コーナー）
-  const corners = [
-    [mx, y1], [mx + CARD_W, y1], [mx, y1 + CARD_H], [mx + CARD_W, y1 + CARD_H],
-    [mx, y2], [mx + CARD_W, y2], [mx, y2 + CARD_H], [mx + CARD_W, y2 + CARD_H]
-  ];
-  ctx.strokeStyle = '#aaaaaa';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([]);
-  corners.forEach(([cx, cy]) => {
-    const t = 14;
-    ctx.beginPath();
-    ctx.moveTo(cx - t, cy); ctx.lineTo(cx + t, cy);
-    ctx.moveTo(cx, cy - t); ctx.lineTo(cx, cy + t);
-    ctx.stroke();
-  });
+    // 破線ガイド
+    ctx.save();
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 6]);
+    [[y1, rotH], [y2, rotH]].forEach(([y, h]) => {
+      ctx.strokeRect(mx - 16, y - 16, rotW + 32, h + 32);
+    });
+    ctx.restore();
 
-  // ラベル（上部小文字）
-  ctx.fillStyle = '#bbbbbb';
-  ctx.font = `bold 18px 'Noto Sans JP', sans-serif`;
-  ctx.fillText(label1, mx, y1 - 20);
-  ctx.fillText(label2, mx, y2 - 20);
+    // トンボ
+    [[mx, y1],[mx+rotW, y1],[mx, y1+rotH],[mx+rotW, y1+rotH],
+     [mx, y2],[mx+rotW, y2],[mx, y2+rotH],[mx+rotW, y2+rotH]].forEach(([cx, cy]) => {
+      const t = 14;
+      ctx.strokeStyle = '#aaaaaa'; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(cx-t, cy); ctx.lineTo(cx+t, cy);
+      ctx.moveTo(cx, cy-t); ctx.lineTo(cx, cy+t);
+      ctx.stroke();
+    });
+
+  } else {
+    // ── 横向きカード: 従来どおり上下2枚 ──
+    const mx  = Math.floor((LSIZE_W - CARD_W) / 2);
+    const gap = Math.floor((LSIZE_H - CARD_H * 2) / 3);
+    const y1  = gap;
+    const y2  = gap * 2 + CARD_H;
+
+    ctx.drawImage(c1, 0, 0, c1.width, c1.height, mx, y1, CARD_W, CARD_H);
+    ctx.drawImage(c2, 0, 0, c2.width, c2.height, mx, y2, CARD_W, CARD_H);
+
+    // 破線ガイド
+    ctx.save();
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 6]);
+    [[y1, CARD_H], [y2, CARD_H]].forEach(([y, h]) => {
+      ctx.strokeRect(mx - 16, y - 16, CARD_W + 32, h + 32);
+    });
+    ctx.restore();
+
+    // トンボ
+    [[mx, y1],[mx+CARD_W, y1],[mx, y1+CARD_H],[mx+CARD_W, y1+CARD_H],
+     [mx, y2],[mx+CARD_W, y2],[mx, y2+CARD_H],[mx+CARD_W, y2+CARD_H]].forEach(([cx, cy]) => {
+      const t = 14;
+      ctx.strokeStyle = '#aaaaaa'; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(cx-t, cy); ctx.lineTo(cx+t, cy);
+      ctx.moveTo(cx, cy-t); ctx.lineTo(cx, cy+t);
+      ctx.stroke();
+    });
+
+    // ラベル
+    ctx.fillStyle = '#bbbbbb';
+    ctx.font = `bold 18px 'Noto Sans JP', sans-serif`;
+    ctx.fillText(label1, mx, y1 - 20);
+    ctx.fillText(label2, mx, y2 - 20);
+  }
 
   return out;
 }
