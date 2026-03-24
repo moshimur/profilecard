@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Profile Card Creator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Playfair+Display:ital,wght@1,400&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1d1b19;
+      --panel: #252220;
+      --panel2: #2e2b28;
+      --input: #1a1816;
+      --accent: #c87941;
+      --accent-h: #d9894f;
+      --danger: #c84141;
+      --text: #f0ece6;
+      --muted: #8a8480;
+      --dim: #5a5450;
+      --border: #3a3733;
+      --card-bg: #faf8f5;
+      --card-border: #b8b3ae;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Noto Sans JP', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-size: 14px;
+    }
+
+    header {
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      flex-shrink: 0;
+      gap: 12px;
+    }
+
+    .logo {
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 1.35rem;
+      white-space: nowrap;
+    }
+
+    .api-area { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .api-label { font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
+
+    .api-input {
+      background: var(--input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 12px;
+      color: var(--text);
+      font-size: 0.72rem;
+      width: 220px;
+      font-family: monospace;
+      transition: border-color 0.2s;
+    }
+    .api-input:focus { outline: none; border-color: var(--accent); }
+    .api-input::placeholder { color: var(--dim); }
+
+    .api-status { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex-shrink: 0; transition: background 0.3s; }
+    .api-status.ok { background: #4caf50; }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 355px;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── Preview ── */
+    .preview-area {
+      overflow-y: auto;
+      padding: 32px 36px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+    }
+
+    .cards-row {
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .card-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .card-slot-label { font-size: 0.62rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--dim); }
+
+    /* ── Card base ── */
+    .card {
+      background: var(--card-bg);
+      border-radius: 13px;
+      border: 1.5px solid var(--card-border);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 6px 28px rgba(0,0,0,0.45);
+      transition: width 0.35s cubic-bezier(.4,0,.2,1), height 0.35s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* Landscape 340×214 */
+    .card.landscape { width: 340px; height: 214px; }
+    /* Portrait  214×340 */
+    .card.portrait  { width: 214px; height: 340px; }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━
+       LANDSCAPE layout
+    ━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    .card-ls {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      padding: 20px 22px;
+      gap: 0;
+    }
+
+    .ls-text {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* アバターが左のとき テキストを右寄せ */
+    .ls-text.text-right { align-items: flex-end; text-align: right; }
+    .ls-text.text-right .c-role,
+    .ls-text.text-right .c-name,
+    .ls-text.text-right .c-phone,
+    .ls-text.text-right .c-extra { text-align: right; }
+
+    .ls-av {
+      flex-shrink: 0;
+      width: 86px; height: 86px;
+    }
+
+    .ls-av.av-left { order: -1; margin-right: 14px; }
+    .ls-av.av-right { order: 1; margin-left: 14px; }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━
+       PORTRAIT layout
+    ━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    .card-pt {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 18px;
+      text-align: center;
+      gap: 10px;
+    }
+
+    .pt-av {
+      flex-shrink: 0;
+      width: 80px; height: 80px;
+    }
+
+    .pt-text {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      width: 100%;
+    }
+
+    /* ── QR slot in landscape (icon+QR mode) ── */
+    .ls-qr {
+      flex-shrink: 0;
+      width: 72px; height: 72px;
+      order: 2;
+      margin-left: 10px;
+    }
+    .ls-qr img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; }
+
+    /* QR only — larger, centered */
+    .ls-qr-only {
+      flex-shrink: 0;
+      width: 90px; height: 90px;
+      order: 1;
+      margin-left: 14px;
+    }
+    .ls-qr-only img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; }
+
+    /* Portrait icon+QR */
+    .pt-qr {
+      flex-shrink: 0;
+      width: 68px; height: 68px;
+      margin-top: 6px;
+    }
+    .pt-qr img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; }
+
+    /* icon+QR: shrink icon slightly */
+    .ls-av.small { width: 68px; height: 68px; }
+    .pt-av.small { width: 64px; height: 64px; }
+    .av-img-wrap {
+      width: 100%; height: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    .av-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    /* Shapes */
+    .sh-circle  .av-img-wrap { border-radius: 50%; border: 1.5px solid #999; }
+    .sh-rounded .av-img-wrap { border-radius: 10px; border: 1.5px solid #999; }
+    .sh-square  .av-img-wrap { border-radius: 0; border: 1.5px solid #999; }
+    .sh-none    .av-img-wrap { border-radius: 0; border: none; }
+
+    /* ── Text elements ── */
+    .c-role  { font-size: 10px; color: #888; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .c-name  { font-size: 22px; font-weight: 700; color: #111; line-height: 1.25; }
+    .c-phone { font-size: 10px; color: #999; }
+    .c-extra { font-size: 9.5px; color: #aaa; word-break: break-all; max-width: 100%; white-space: pre-line; }
+
+    /* Portrait text tighter */
+    .card-pt .c-name { font-size: 20px; }
+
+    /* ── Export ── */
+    .export-wrap { width: 100%; max-width: 720px; }
+    .export-heading { font-size: 0.62rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
+
+    .export-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+    .btn-export {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      padding: 12px 13px;
+      font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      text-align: left;
+    }
+    .btn-export:hover { border-color: var(--accent); }
+    .btn-export:active { transform: scale(0.98); }
+    .btn-export .be-title { font-size: 0.76rem; font-weight: 700; display: block; margin-bottom: 3px; }
+    .btn-export .be-sub { font-size: 0.62rem; color: var(--muted); display: block; }
+
+    .size-note {
+      margin-top: 10px;
+      font-size: 0.67rem;
+      color: var(--dim);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 10px 14px;
+      line-height: 1.75;
+    }
+    .size-note b { color: var(--muted); }
+
+    /* ── Edit Panel ── */
+    .edit-panel {
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ps { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+    .ps:last-child { border-bottom: none; }
+
+    .ps-label { font-size: 0.6rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--dim); margin-bottom: 9px; display: block; }
+
+    .tg  { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .tg3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+    .tg4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; }
+
+    .bt {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--muted);
+      padding: 8px 6px;
+      font-size: 0.74rem;
+      font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer;
+      transition: all 0.18s;
+      text-align: center;
+    }
+    .bt.on  { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .bt:hover:not(.on) { border-color: var(--muted); color: var(--text); }
+
+    .fields { display: flex; flex-direction: column; gap: 7px; }
+
+    .field-lbl { font-size: 0.58rem; color: var(--dim); letter-spacing: 0.08em; display: block; margin-bottom: 3px; }
+
+    .fi {
+      background: var(--input);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 11px;
+      color: var(--text);
+      font-size: 0.8rem;
+      font-family: 'Noto Sans JP', sans-serif;
+      width: 100%;
+      transition: border-color 0.2s;
+    }
+    .fi:focus { outline: none; border-color: var(--accent); }
+    .fi::placeholder { color: var(--dim); }
+
+    .av-preview { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); margin-bottom: 7px; display: none; }
+    .av-preview.show { display: block; }
+
+    .btn-row { display: flex; gap: 6px; }
+
+    .bp {
+      background: var(--accent);
+      border: none;
+      border-radius: 7px;
+      color: #fff;
+      padding: 9px 12px;
+      font-size: 0.76rem;
+      font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer;
+      flex: 1;
+      transition: background 0.2s;
+    }
+    .bp:hover { background: var(--accent-h); }
+
+    .bd {
+      background: transparent;
+      border: 1px solid var(--danger);
+      border-radius: 7px;
+      color: var(--danger);
+      padding: 9px 12px;
+      font-size: 0.76rem;
+      font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .bd:hover { background: var(--danger); color: #fff; }
+
+    .drop-hint { font-size: 0.64rem; color: var(--dim); margin-top: 4px; }
+
+    /* AI box */
+    .ai-box {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px;
+      margin-top: 11px;
+    }
+    .ai-title { font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 9px; }
+
+    .ai-ta {
+      background: var(--input);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 0.73rem;
+      font-family: 'Noto Sans JP', sans-serif;
+      width: 100%;
+      resize: vertical;
+      min-height: 68px;
+      margin-bottom: 7px;
+    }
+    .ai-ta:focus { outline: none; border-color: var(--accent); }
+    .ai-ta::placeholder { color: var(--dim); }
+
+    .btn-gen {
+      background: var(--accent);
+      border: none;
+      border-radius: 7px;
+      color: #fff;
+      padding: 10px;
+      font-size: 0.76rem;
+      font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    .btn-gen:hover { background: var(--accent-h); }
+    .btn-gen:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .loading-row { display: none; align-items: center; gap: 7px; font-size: 0.7rem; color: var(--accent); margin-top: 7px; }
+    .loading-row.show { display: flex; }
+    .spin { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .ai-hint { font-size: 0.62rem; color: var(--dim); margin-top: 8px; line-height: 1.6; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 0.76rem;
+      color: var(--text);
+      transition: transform 0.3s ease;
+      z-index: 9999;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.ok  { border-color: var(--accent); color: var(--accent); }
+    .toast.err { border-color: var(--danger); color: #ff8888; }
+
+    /* ── Theme swatches ── */
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .theme-swatch {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 6px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform 0.15s, border-color 0.15s;
+      position: relative;
+    }
+    .theme-swatch:hover { transform: scale(1.08); }
+    .theme-swatch.on { border-color: var(--accent); }
+    .theme-swatch.on::after {
+      content: '✓';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: rgba(0,0,0,0.5);
+    }
+    .theme-swatch.on.dark-theme::after { color: rgba(255,255,255,0.6); }
+
+    .theme-name {
+      font-size: 0.58rem;
+      color: var(--dim);
+      text-align: center;
+      margin-top: 3px;
+      line-height: 1.2;
+    }
+
+    .theme-item { display: flex; flex-direction: column; align-items: center; }
+
+    /* ── Fixed export bar ── */
+    .export-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 100;
+      flex-wrap: wrap;
+    }
+
+    .export-bar-label {
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--dim);
+      white-space: nowrap;
+      margin-right: 4px;
+    }
+
+    .btn-dl {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      padding: 10px 16px;
+      font-size: 0.78rem;
+      font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-dl:hover { background: var(--accent-h); }
+    .btn-dl:active { transform: scale(0.97); }
+
+    .btn-dl .dl-sub {
+      display: block;
+      font-size: 0.58rem;
+      opacity: 0.8;
+      margin-top: 1px;
+    }
+
+    /* body padding to avoid content hidden under fixed bar */
+    body { padding-bottom: 64px; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Profile Card</div>
+  <div class="api-area">
+    <span class="api-label">Gemini API Key</span>
+    <div class="api-status" id="apiStatus"></div>
+    <input class="api-input" type="password" id="apiKey" placeholder="AIzaSy..." autocomplete="off" oninput="onApiKeyChange()">
+  </div>
+</header>
+
+<main>
+
+  <!-- ========== Preview ========== -->
+  <div class="preview-area" id="dropZone">
+
+    <div class="cards-row">
+      <div class="card-slot">
+        <span class="card-slot-label">表面</span>
+        <div class="card landscape" id="cardFront">
+          <!-- Landscape inner -->
+          <div class="card-ls" id="lsFront">
+            <div class="ls-text" id="lsTextFront">
+              <div class="c-role"  id="fRole">プロダクトデザイナー</div>
+              <div class="c-name"  id="fName">山田 太郎</div>
+              <div class="c-phone" id="fPhone">090-1234-5678</div>
+              <div class="c-extra" id="fExtra"></div>
+            </div>
+            <div class="ls-av av-right sh-circle" id="lsAvFront" style="display:none">
+              <div class="av-img-wrap"><img id="lsAvImgFront" src="" alt=""></div>
+            </div>
+            <div class="ls-qr" id="lsQrFront" style="display:none">
+              <img id="lsQrImgFront" src="" alt="QR">
+            </div>
+          </div>
+          <!-- Portrait inner -->
+          <div class="card-pt" id="ptFront" style="display:none">
+            <div class="pt-av sh-circle" id="ptAvFront" style="display:none">
+              <div class="av-img-wrap"><img id="ptAvImgFront" src="" alt=""></div>
+            </div>
+            <div class="pt-text">
+              <div class="c-role"  id="fRoleP">プロダクトデザイナー</div>
+              <div class="c-name"  id="fNameP">山田 太郎</div>
+              <div class="c-phone" id="fPhoneP">090-1234-5678</div>
+              <div class="c-extra" id="fExtraP"></div>
+            </div>
+            <div class="pt-qr" id="ptQrFront" style="display:none">
+              <img id="ptQrImgFront" src="" alt="QR">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-slot">
+        <span class="card-slot-label">裏面</span>
+        <div class="card landscape" id="cardBack">
+          <div class="card-ls" id="lsBack">
+            <div class="ls-text" id="lsTextBack">
+              <div class="c-role"  id="bRole"></div>
+              <div class="c-name"  id="bName"></div>
+              <div class="c-phone" id="bPhone"></div>
+              <div class="c-extra" id="bExtra"></div>
+            </div>
+            <div class="ls-av av-right sh-circle" id="lsAvBack" style="display:none">
+              <div class="av-img-wrap"><img id="lsAvImgBack" src="" alt=""></div>
+            </div>
+            <div class="ls-qr" id="lsQrBack" style="display:none">
+              <img id="lsQrImgBack" src="" alt="QR">
+            </div>
+          </div>
+          <div class="card-pt" id="ptBack" style="display:none">
+            <div class="pt-av sh-circle" id="ptAvBack" style="display:none">
+              <div class="av-img-wrap"><img id="ptAvImgBack" src="" alt=""></div>
+            </div>
+            <div class="pt-text">
+              <div class="c-role"  id="bRoleP"></div>
+              <div class="c-name"  id="bNameP"></div>
+              <div class="c-phone" id="bPhoneP"></div>
+              <div class="c-extra" id="bExtraP"></div>
+            </div>
+            <div class="pt-qr" id="ptQrBack" style="display:none">
+              <img id="ptQrImgBack" src="" alt="QR">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Print note -->
+    <div class="size-note" style="max-width:720px; width:100%;">
+      <b>コンビニ印刷：</b>マルチコピー機 → 写真プリント → L版 を選択。全ファイルL版（89×127mm・350dpi）出力。<br>
+      <b>L版 表×2：</b>40円 → 表面カード2枚（使用＋予備）／
+      <b>L版 裏×2：</b>40円 → 裏面カード2枚（使用＋予備）／
+      <b>L版 裏表：</b>40円 → 表面1枚・裏面1枚
+    </div>
+
+  </div>
+
+  <!-- ========== Edit Panel ========== -->
+  <div class="edit-panel">
+
+    <!-- Tab -->
+    <div class="ps">
+      <div class="tg">
+        <button class="bt on" id="tabF" onclick="switchTab('front')">表面を編集</button>
+        <button class="bt"    id="tabB" onclick="switchTab('back')">裏面を編集</button>
+      </div>
+    </div>
+
+    <!-- Color Theme -->
+    <div class="ps">
+      <span class="ps-label">カラーテーマ</span>
+      <div class="theme-grid" id="themeGrid">
+        <div class="theme-item">
+          <div class="theme-swatch on" id="th-classic"
+               style="background:#faf8f5; border-color:var(--accent);"
+               onclick="setTheme('classic')" title="クラシック"></div>
+          <div class="theme-name">クラシック</div>
+        </div>
+        <div class="theme-item">
+          <div class="theme-swatch dark-theme" id="th-black"
+               style="background:#1a1a1a;"
+               onclick="setTheme('black')" title="ブラック"></div>
+          <div class="theme-name">ブラック</div>
+        </div>
+        <div class="theme-item">
+          <div class="theme-swatch dark-theme" id="th-navy"
+               style="background:#1a2744;"
+               onclick="setTheme('navy')" title="ネイビー"></div>
+          <div class="theme-name">ネイビー</div>
+        </div>
+        <div class="theme-item">
+          <div class="theme-swatch" id="th-sakura"
+               style="background:#fff0f3;"
+               onclick="setTheme('sakura')" title="サクラ"></div>
+          <div class="theme-name">サクラ</div>
+        </div>
+        <div class="theme-item">
+          <div class="theme-swatch" id="th-mint"
+               style="background:#eef8f2;"
+               onclick="setTheme('mint')" title="ミント"></div>
+          <div class="theme-name">ミント</div>
+        </div>
+        <div class="theme-item">
+          <div class="theme-swatch" id="th-beige"
+               style="background:#f5efe4;"
+               onclick="setTheme('beige')" title="ベージュ"></div>
+          <div class="theme-name">ベージュ</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Orientation -->
+    <div class="ps">
+      <span class="ps-label">カードの向き</span>
+      <div class="tg">
+        <button class="bt on" id="oriH" onclick="setOri('landscape')">横向き</button>
+        <button class="bt"    id="oriV" onclick="setOri('portrait')">縦向き</button>
+      </div>
+    </div>
+
+    <!-- Text -->
+    <div class="ps">
+      <span class="ps-label">テキスト</span>
+      <div class="fields">
+        <div>
+          <span class="field-lbl">肩書き</span>
+          <input class="fi" id="inRole"  type="text" placeholder="例：プロダクトデザイナー" oninput="setField('role',this.value)">
+        </div>
+        <div>
+          <span class="field-lbl">名前</span>
+          <input class="fi" id="inName"  type="text" placeholder="例：山田 太郎" oninput="setField('name',this.value)">
+        </div>
+        <div>
+          <span class="field-lbl">電話番号</span>
+          <input class="fi" id="inPhone" type="text" placeholder="例：090-1234-5678" oninput="setField('phone',this.value)">
+        </div>
+        <div>
+          <span class="field-lbl">追加テキスト（SNS・URL・メール など）※Enterで改行</span>
+          <textarea class="fi" id="inExtra" rows="3" placeholder="例：@nukonuko&#10;https://note.com/xxx" oninput="setField('extra',this.value)" style="resize:vertical; min-height:62px; line-height:1.5;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layout Mode -->
+    <div class="ps">
+      <span class="ps-label">レイアウト</span>
+      <div class="tg" style="grid-template-columns:1fr 1fr; margin-bottom:5px">
+        <button class="bt on" id="layText" onclick="setLayout('textOnly')">テキストのみ</button>
+        <button class="bt"    id="layIcon" onclick="setLayout('icon')">アイコン</button>
+      </div>
+      <div class="tg" style="grid-template-columns:1fr 1fr">
+        <button class="bt"    id="layQr"   onclick="setLayout('qr')">QRのみ</button>
+        <button class="bt"    id="layBoth" onclick="setLayout('iconQr')">アイコン＋QR</button>
+      </div>
+    </div>
+
+    <!-- Avatar (shown when layout = icon or iconQr) -->
+    <div class="ps" id="iconSection">
+      <span class="ps-label">アイコン画像</span>
+
+      <img class="av-preview" id="panelAvImg" src="" alt="">
+
+      <div class="btn-row" style="margin-bottom:5px">
+        <button class="bp" onclick="document.getElementById('fileIn').value=''; document.getElementById('fileIn').click()">画像を選択</button>
+        <button class="bd" onclick="removeAv()">削除</button>
+      </div>
+      <input type="file" id="fileIn" accept="image/*" style="display:none" onchange="handleFile(this)">
+      <div class="drop-hint">ドラッグ＆ドロップでも追加できます</div>
+
+      <!-- Position -->
+      <div style="margin-top:11px">
+        <span class="field-lbl">位置（横向き時）</span>
+        <div class="tg">
+          <button class="bt"    id="avPosL" onclick="setAvProp('pos','left')">左</button>
+          <button class="bt on" id="avPosR" onclick="setAvProp('pos','right')">右</button>
+        </div>
+      </div>
+
+      <!-- Shape -->
+      <div style="margin-top:8px">
+        <span class="field-lbl">形状</span>
+        <div class="tg4">
+          <button class="bt on" id="avShC"  onclick="setAvProp('shape','circle')">丸</button>
+          <button class="bt"    id="avShR"  onclick="setAvProp('shape','rounded')">角丸</button>
+          <button class="bt"    id="avShS"  onclick="setAvProp('shape','square')">四角</button>
+          <button class="bt"    id="avShN"  onclick="setAvProp('shape','none')">なし</button>
+        </div>
+      </div>
+
+      <!-- AI gen -->
+      <div class="ai-box">
+        <div class="ai-title">✦ AI画像生成（Gemini）</div>
+        <textarea class="ai-ta" id="aiPrompt" placeholder="例：プロフェッショナルな日本人男性、スーツ、アニメ調、白背景&#10;例：かわいいキャラクター、猫耳、パステルカラー"></textarea>
+        <button class="btn-gen" id="btnGen" onclick="generateAI()">✦ 生成する</button>
+        <div class="loading-row" id="loadRow">
+          <div class="spin"></div>
+          <span>生成中…</span>
+        </div>
+        <div class="ai-hint">
+          ※ 上部に Gemini API Key を入力してから使用してください。<br>
+          生成した画像は自動でアイコンに設定されます。
+        </div>
+      </div>
+    </div>
+
+    <!-- QR (shown when layout = qr or iconQr) -->
+    <div class="ps" id="qrSection">
+      <span class="ps-label">QRコード</span>
+      <div style="margin-bottom:7px">
+        <span class="field-lbl">QRに埋め込むURL・テキスト</span>
+        <input class="fi" id="qrText" type="text" placeholder="例：https://note.com/xxx">
+      </div>
+      <button class="btn-gen" onclick="generateQR()">◼ QRを生成・設定</button>
+      <div class="ai-hint" style="margin-top:7px">
+        アイコン＋QRモードでは右側にQRが配置されます。<br>
+        QRのみモードでは右側に大きく表示されます。
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- ========== Fixed Download Bar ========== -->
+<div class="export-bar">
+  <span class="export-bar-label">🖨️ ダウンロード</span>
+  <button class="btn-dl" onclick="doExportL2('front')">
+    L版 表×2
+    <span class="dl-sub">表面2枚／JPEG</span>
+  </button>
+  <button class="btn-dl" onclick="doExportL2('back')">
+    L版 裏×2
+    <span class="dl-sub">裏面2枚／JPEG</span>
+  </button>
+  <button class="btn-dl" onclick="doExportLFrontBack()">
+    L版 裏表
+    <span class="dl-sub">表面＋裏面／JPEG</span>
+  </button>
+</div>
+
+<script>
+// =====================================================================
+// STATE
+// =====================================================================
+const S = {
+  tab: 'front',
+  ori: 'landscape',
+  theme: 'classic',
+  front: { role:'プロダクトデザイナー', name:'山田 太郎', phone:'090-1234-5678', extra:'', av:null, qr:null, pos:'right', shape:'circle', layout:'textOnly' },
+  back:  { role:'', name:'', phone:'', extra:'', av:null, qr:null, pos:'right', shape:'circle', layout:'textOnly' }
+};
+
+// =====================================================================
+// THEMES
+// =====================================================================
+const THEMES = {
+  classic: { bg:'#faf8f5', border:'#b8b3ae', name:'#111111', sub:'#888888', extra:'#aaaaaa' },
+  black:   { bg:'#1a1a1a', border:'#444444', name:'#f0ece6', sub:'#888888', extra:'#666666' },
+  navy:    { bg:'#1a2744', border:'#2e4a7a', name:'#e8eef8', sub:'#8899bb', extra:'#667799' },
+  sakura:  { bg:'#fff0f3', border:'#e8a0b0', name:'#3d1020', sub:'#a06070', extra:'#c090a0' },
+  mint:    { bg:'#eef8f2', border:'#7ec9a0', name:'#0d2a1a', sub:'#4a8860', extra:'#7aaa88' },
+  beige:   { bg:'#f5efe4', border:'#c9a87e', name:'#2a1a0a', sub:'#8a6a4a', extra:'#aa9070' },
+};
+
+// =====================================================================
+// RENDER
+// =====================================================================
+function render() {
+  const t = THEMES[S.theme];
+
+  ['front','back'].forEach(side => {
+    const d   = S[side];
+    const cap = side === 'front' ? 'Front' : 'Back';
+    const sf  = side === 'front' ? 'f' : 'b';
+    const lay = d.layout; // 'textOnly' | 'icon' | 'qr' | 'iconQr'
+
+    // ── Text
+    ['', 'P'].forEach(s => {
+      document.getElementById(`${sf}Role${s}`).textContent  = d.role;
+      document.getElementById(`${sf}Name${s}`).textContent  = d.name;
+      document.getElementById(`${sf}Phone${s}`).textContent = d.phone;
+      document.getElementById(`${sf}Extra${s}`).textContent = d.extra;
+    });
+
+    // ── Theme colors
+    const card = document.getElementById(`card${cap}`);
+    card.style.background  = t.bg;
+    card.style.borderColor = t.border;
+    ['Role','Name','Phone','Extra'].forEach(f => {
+      const col = f === 'Name' ? t.name : f === 'Extra' ? t.extra : t.sub;
+      [document.getElementById(`${sf}${f}`), document.getElementById(`${sf}${f}P`)].forEach(el => el.style.color = col);
+    });
+
+    // ── Orientation
+    const lsEl = document.getElementById(`ls${cap}`);
+    const ptEl = document.getElementById(`pt${cap}`);
+    if (S.ori === 'landscape') {
+      card.className = 'card landscape';
+      lsEl.style.display = '';
+      ptEl.style.display = 'none';
+    } else {
+      card.className = 'card portrait';
+      lsEl.style.display = 'none';
+      ptEl.style.display = '';
+    }
+
+    // ── LANDSCAPE elements
+    const lsAv    = document.getElementById(`lsAv${cap}`);
+    const lsAvImg = document.getElementById(`lsAvImg${cap}`);
+    const lsText  = document.getElementById(`lsText${cap}`);
+    const lsQr    = document.getElementById(`lsQr${cap}`);
+    const lsQrImg = document.getElementById(`lsQrImg${cap}`);
+
+    const showIcon = (lay === 'icon' || lay === 'iconQr') && d.av;
+    const showQr   = (lay === 'qr'   || lay === 'iconQr') && d.qr;
+
+    if (showIcon) {
+      lsAvImg.src = d.av;
+      lsAv.style.display = '';
+      lsAv.className = `ls-av av-${d.pos} sh-${d.shape}${lay === 'iconQr' ? ' small' : ''}`;
+    } else {
+      lsAv.style.display = 'none';
+    }
+
+    if (showQr) {
+      lsQrImg.src = d.qr;
+      lsQr.style.display = '';
+      lsQr.className = lay === 'qr' ? 'ls-qr-only' : 'ls-qr';
+    } else {
+      lsQr.style.display = 'none';
+    }
+
+    // text alignment: icon on left → text right-aligned
+    const iconOnLeft = showIcon && d.pos === 'left';
+    lsText.className = `ls-text${iconOnLeft ? ' text-right' : ''}`;
+
+    // ── PORTRAIT elements
+    const ptAv    = document.getElementById(`ptAv${cap}`);
+    const ptAvImg = document.getElementById(`ptAvImg${cap}`);
+    const ptQr    = document.getElementById(`ptQr${cap}`);
+    const ptQrImg = document.getElementById(`ptQrImg${cap}`);
+
+    if (showIcon) {
+      ptAvImg.src = d.av;
+      ptAv.style.display = '';
+      ptAv.className = `pt-av sh-${d.shape}${lay === 'iconQr' ? ' small' : ''}`;
+    } else {
+      ptAv.style.display = 'none';
+    }
+
+    if (showQr) {
+      ptQrImg.src = d.qr;
+      ptQr.style.display = '';
+    } else {
+      ptQr.style.display = 'none';
+    }
+  });
+
+  // ── Panel sections visibility
+  const curLay = S[S.tab].layout;
+  const showIconSec = curLay === 'icon' || curLay === 'iconQr';
+  const showQrSec   = curLay === 'qr'   || curLay === 'iconQr';
+  document.getElementById('iconSection').style.display = showIconSec ? '' : 'none';
+  document.getElementById('qrSection').style.display   = showQrSec  ? '' : 'none';
+
+  // Panel avatar preview
+  const cur = S[S.tab];
+  const pav = document.getElementById('panelAvImg');
+  if (cur.av) { pav.src = cur.av; pav.classList.add('show'); }
+  else         { pav.classList.remove('show'); }
+}
+
+// =====================================================================
+// CONTROLS
+// =====================================================================
+function switchTab(tab) {
+  S.tab = tab;
+  setBt('tabF', tab === 'front');
+  setBt('tabB', tab === 'back');
+
+  const d = S[tab];
+  document.getElementById('inRole').value  = d.role;
+  document.getElementById('inName').value  = d.name;
+  document.getElementById('inPhone').value = d.phone;
+  document.getElementById('inExtra').value = d.extra;
+
+  setBt('avPosL', d.pos === 'left');
+  setBt('avPosR', d.pos === 'right');
+  setBt('avShC', d.shape === 'circle');
+  setBt('avShR', d.shape === 'rounded');
+  setBt('avShS', d.shape === 'square');
+  setBt('avShN', d.shape === 'none');
+
+  // sync layout buttons
+  ['textOnly','icon','qr','iconQr'].forEach(l => {
+    const id = { textOnly:'layText', icon:'layIcon', qr:'layQr', iconQr:'layBoth' }[l];
+    setBt(id, d.layout === l);
+  });
+
+  render();
+}
+
+function setLayout(lay) {
+  S[S.tab].layout = lay;
+  setBt('layText', lay === 'textOnly');
+  setBt('layIcon', lay === 'icon');
+  setBt('layQr',   lay === 'qr');
+  setBt('layBoth', lay === 'iconQr');
+  render();
+}
+
+function setOri(o) {
+  S.ori = o;
+  setBt('oriH', o === 'landscape');
+  setBt('oriV', o === 'portrait');
+  render();
+}
+
+function setTheme(name) {
+  S.theme = name;
+  // update swatch highlight
+  Object.keys(THEMES).forEach(k => {
+    const el = document.getElementById(`th-${k}`);
+    if (el) el.classList.toggle('on', k === name);
+  });
+  render();
+}
+
+function setField(f, v) { S[S.tab][f] = v; render(); }
+
+function setAvProp(prop, val) {
+  if (prop === 'pos') {
+    S[S.tab].pos = val;
+    setBt('avPosL', val === 'left');
+    setBt('avPosR', val === 'right');
+  } else {
+    S[S.tab].shape = val;
+    setBt('avShC', val === 'circle');
+    setBt('avShR', val === 'rounded');
+    setBt('avShS', val === 'square');
+    setBt('avShN', val === 'none');
+  }
+  render();
+}
+
+function setBt(id, on) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('on', on);
+}
+
+// =====================================================================
+// FILE / DRAG-DROP
+// =====================================================================
+function handleFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = e => { S[S.tab].av = e.target.result; render(); };
+  r.readAsDataURL(f);
+}
+
+function removeAv() {
+  S[S.tab].av = null;
+  document.getElementById('fileIn').value = '';
+  render();
+}
+
+document.getElementById('dropZone').addEventListener('dragover', e => e.preventDefault());
+document.getElementById('dropZone').addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) {
+    const r = new FileReader();
+    r.onload = ev => { S[S.tab].av = ev.target.result; render(); };
+    r.readAsDataURL(f);
+  }
+});
+
+// =====================================================================
+// QR CODE GENERATION
+// =====================================================================
+function generateQR() {
+  const text = document.getElementById('qrText').value.trim();
+  if (!text) { toast('QRに埋め込むテキストを入力してください', 'err'); return; }
+
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+  document.body.appendChild(container);
+
+  try {
+    new QRCode(container, {
+      text: text,
+      width: 256, height: 256,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+
+    setTimeout(() => {
+      const canvas = container.querySelector('canvas');
+      const img    = container.querySelector('img');
+      const dataUrl = canvas ? canvas.toDataURL('image/png') : (img ? img.src : null);
+      document.body.removeChild(container);
+
+      if (dataUrl) {
+        S[S.tab].qr = dataUrl;
+        render();
+        toast('◼ QRコードを設定しました', 'ok');
+      } else {
+        toast('QR生成に失敗しました', 'err');
+      }
+    }, 100);
+  } catch(e) {
+    document.body.removeChild(container);
+    toast('QR生成エラー: ' + e.message, 'err');
+  }
+}
+
+// =====================================================================
+// API KEY
+// =====================================================================
+function onApiKeyChange() {
+  const v = document.getElementById('apiKey').value.trim();
+  sessionStorage.setItem('gcKey', v);
+  document.getElementById('apiStatus').className = 'api-status' + (v.length > 10 ? ' ok' : '');
+}
+
+// =====================================================================
+// AI IMAGE GENERATION — 2026年3月時点で動作するモデルを順に試す
+//   1) gemini-3.1-flash-image-preview  (最新・推奨)
+//   2) gemini-2.5-flash-image          (安定・最安)
+//   3) gemini-3-pro-image-preview      (高品質)
+//   ※ すべて有料Tier必須。1枚あたり約3〜20円。
+// =====================================================================
+const IMAGE_MODELS = [
+  'gemini-3.1-flash-image-preview',
+  'gemini-2.5-flash-image',
+  'gemini-3-pro-image-preview',
+];
+
+async function tryGeminiImageModel(key, prompt, modelName) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+      })
+    }
+  );
+  const d = await res.json();
+  if (!res.ok) throw new Error(d.error?.message || `HTTP ${res.status}`);
+  const part = d.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+  if (!part) throw new Error('no image data in response');
+  return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+}
+
+async function generateAI() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) { toast('上部に Gemini API Key を入力してください', 'err'); return; }
+
+  const prompt = document.getElementById('aiPrompt').value.trim();
+  if (!prompt) { toast('プロンプトを入力してください', 'err'); return; }
+
+  document.getElementById('btnGen').disabled = true;
+  const loadRow = document.getElementById('loadRow');
+  loadRow.classList.add('show');
+
+  let dataUrl = null;
+  const errors = [];
+
+  for (const model of IMAGE_MODELS) {
+    loadRow.querySelector('span').textContent = `${model} で生成中…`;
+    try {
+      dataUrl = await tryGeminiImageModel(key, prompt, model);
+      break; // 成功したらループを抜ける
+    } catch(e) {
+      console.warn(`[${model}] failed:`, e.message);
+      errors.push({ model, msg: e.message });
+    }
+  }
+
+  document.getElementById('btnGen').disabled = false;
+  loadRow.classList.remove('show');
+
+  if (dataUrl) {
+    S[S.tab].av = dataUrl;
+    render();
+    toast('✦ 画像を生成しました！', 'ok');
+    return;
+  }
+
+  // ── 全モデル失敗 → 原因を判定してモーダル表示 ──
+  console.error('All models failed:', errors);
+
+  const allMsgs = errors.map(e => e.msg).join(' ');
+  const isBilling = allMsgs.match(/billing|FAILED_PRECONDITION|403/i);
+  const isQuota   = allMsgs.match(/quota|429|RESOURCE_EXHAUSTED/i);
+  const isKey     = allMsgs.match(/API_KEY|401|UNAUTHENTICATED/i);
+
+  let title, body;
+  if (isKey) {
+    title = '❌ APIキーが無効です';
+    body  = 'キーをコピーし直して、もう一度試してください。<br><a href="https://aistudio.google.com/apikey" target="_blank" style="color:#c87941;">→ Google AI Studio でキーを確認</a>';
+  } else if (isBilling) {
+    title = '💳 Billing（課金）が有効になっていません';
+    body  = `
+      <b style="color:#f0ece6;">確認手順：</b><br>
+      1. <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#c87941;">aistudio.google.com/apikey</a> を開く<br>
+      2. APIキーの「プラン」欄を見る<br>
+      3. <b style="color:#f0ece6;">「無料」→「有料」になっているか確認</b><br><br>
+      「無料」のままの場合は、プロジェクト行の「請求先アカウントを設定」ボタンをクリックしてクレカを紐づけてください。<br><br>
+      <b style="color:#f0ece6;">注意：</b>画像生成は2025年12月以降、有料Tier必須です（1枚約3〜6円）。
+    `;
+  } else if (isQuota) {
+    title = '⏱ 使用制限に達しました';
+    body  = '少し時間をおいてから再試行してください。（割り当てはPST深夜＝日本時間16時にリセット）';
+  } else {
+    title = '⚠ 画像生成エラー';
+    body  = `すべてのモデルで失敗しました。<br><small style="color:#888;">${errors.map(e=>`[${e.model}] ${e.msg}`).join('<br>')}</small>`;
+  }
+
+  showApiHelp(title, body);
+}
+
+function showApiHelp(title, body) {
+  const existing = document.getElementById('apiHelpBox');
+  if (existing) existing.remove();
+
+  const box = document.createElement('div');
+  box.id = 'apiHelpBox';
+  box.style.cssText = `
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:#252220; border:1px solid #c87941; border-radius:12px;
+    padding:22px 26px; max-width:440px; width:92%; z-index:9999;
+    box-shadow:0 12px 40px rgba(0,0,0,0.65); font-family:'Noto Sans JP',sans-serif;
+  `;
+  box.innerHTML = `
+    <div style="font-size:0.82rem;font-weight:700;color:#c87941;margin-bottom:12px;">${title}</div>
+    <div style="font-size:0.73rem;color:#c8c4be;line-height:1.85;">${body}</div>
+    <button onclick="document.getElementById('apiHelpBox').remove()" style="
+      margin-top:16px; background:#c87941; border:none; border-radius:7px;
+      color:#fff; padding:9px 22px; font-size:0.78rem; cursor:pointer; width:100%;
+      font-family:'Noto Sans JP',sans-serif;
+    ">閉じる</button>
+  `;
+  document.body.appendChild(box);
+}
+
+// =====================================================================
+// EXPORT — 全出力をL版（1228×1750px）に統一
+// =====================================================================
+const CARD_W  = 1181;   // 85.6mm × 350dpi
+const CARD_H  = 744;    // 54mm   × 350dpi
+const LSIZE_W = 1228;   // 89mm   × 350dpi
+const LSIZE_H = 1750;   // 127mm  × 350dpi
+
+async function captureCard(side) {
+  const cap = side === 'front' ? 'Front' : 'Back';
+  const el  = document.getElementById(`card${cap}`);
+  const scaleX = CARD_W / el.offsetWidth;
+  const scaleY = CARD_H / el.offsetHeight;
+  const bg = THEMES[S.theme].bg;
+  return html2canvas(el, {
+    scale: Math.max(scaleX, scaleY) * (window.devicePixelRatio || 1),
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: bg,
+    logging: false
+  });
+}
+
+// ── 共通：L版キャンバスに2枚配置してダウンロード ──
+function buildLCanvas(c1, label1, c2, label2) {
+  const out = document.createElement('canvas');
+  out.width = LSIZE_W;
+  out.height = LSIZE_H;
+  const ctx = out.getContext('2d');
+
+  // 白背景
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, LSIZE_W, LSIZE_H);
+
+  const mx  = (LSIZE_W - CARD_W) / 2;          // 左右中央マージン
+  const gap = Math.floor((LSIZE_H - CARD_H * 2) / 3);  // 上・中間・下の余白
+  const y1  = gap;
+  const y2  = gap * 2 + CARD_H;
+
+  // カード描画
+  ctx.drawImage(c1, 0, 0, c1.width, c1.height, mx, y1, CARD_W, CARD_H);
+  ctx.drawImage(c2, 0, 0, c2.width, c2.height, mx, y2, CARD_W, CARD_H);
+
+  // 破線の切り取りガイド
+  ctx.save();
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 6]);
+  [[y1, CARD_H], [y2, CARD_H]].forEach(([y, h]) => {
+    ctx.strokeRect(mx - 16, y - 16, CARD_W + 32, h + 32);
+  });
+  ctx.restore();
+
+  // 十字トンボ（コーナー）
+  const corners = [
+    [mx, y1], [mx + CARD_W, y1], [mx, y1 + CARD_H], [mx + CARD_W, y1 + CARD_H],
+    [mx, y2], [mx + CARD_W, y2], [mx, y2 + CARD_H], [mx + CARD_W, y2 + CARD_H]
+  ];
+  ctx.strokeStyle = '#aaaaaa';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  corners.forEach(([cx, cy]) => {
+    const t = 14;
+    ctx.beginPath();
+    ctx.moveTo(cx - t, cy); ctx.lineTo(cx + t, cy);
+    ctx.moveTo(cx, cy - t); ctx.lineTo(cx, cy + t);
+    ctx.stroke();
+  });
+
+  // ラベル（上部小文字）
+  ctx.fillStyle = '#bbbbbb';
+  ctx.font = `bold 18px 'Noto Sans JP', sans-serif`;
+  ctx.fillText(label1, mx, y1 - 20);
+  ctx.fillText(label2, mx, y2 - 20);
+
+  return out;
+}
+
+// ── L版 表×2 / 裏×2 ──
+async function doExportL2(side) {
+  const label = side === 'front' ? '表面' : '裏面';
+  const fname = side === 'front' ? 'front' : 'back';
+  toast(`L版 ${label}×2 を生成中…`, '');
+  try {
+    const c = await captureCard(side);
+    const out = buildLCanvas(c, `${label} (1枚目)`, c, `${label} (2枚目)`);
+    dlCanvas(out, `profilecard_L_${fname}x2.jpg`);
+    toast('ダウンロードしました ✓', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('エクスポートに失敗しました', 'err');
+  }
+}
+
+// ── L版 裏表（表面＋裏面） ──
+async function doExportLFrontBack() {
+  toast('L版 裏表 を生成中…', '');
+  try {
+    const [fc, bc] = await Promise.all([captureCard('front'), captureCard('back')]);
+    const out = buildLCanvas(fc, '表面', bc, '裏面');
+    dlCanvas(out, 'profilecard_L_frontback.jpg');
+    toast('ダウンロードしました ✓', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('エクスポートに失敗しました', 'err');
+  }
+}
+
+function dlCanvas(canvas, filename) {
+  const a = document.createElement('a');
+  a.download = filename;
+  a.href = canvas.toDataURL('image/jpeg', 0.95);
+  a.click();
+}
+
+// =====================================================================
+// TOAST
+// =====================================================================
+let _tt;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  clearTimeout(_tt);
+  _tt = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// =====================================================================
+// INIT
+// =====================================================================
+(function() {
+  const saved = sessionStorage.getItem('gcKey');
+  if (saved) {
+    document.getElementById('apiKey').value = saved;
+    document.getElementById('apiStatus').className = 'api-status' + (saved.length > 10 ? ' ok' : '');
+  }
+  switchTab('front');
+})();
+</script>
+
+</body>
+</html>
